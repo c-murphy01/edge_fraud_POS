@@ -7,7 +7,7 @@ def add_merchant_spike(df, row, cards, window):
     rng = np.random.default_rng()
 
     #get the window start time from the inputted row's timestamp
-    start_time = row.timestamp.floor(f"{window}S")
+    start_time = row.timestamp.floor(f"{window}s")
 
     #empty array to store new rows
     new_rows = []
@@ -49,6 +49,9 @@ def add_card_burst(df,card_id, start_time, merchant_list, tx_per_merch, spacing)
     #fro each merchant in the list
     for merch_id in merchant_list:
         #get a reference row for this merchant id
+        #if this merchant is not in the dataframe somehow, continiue to next merchant
+        if df[df["merchant_id"] == merch_id].empty:
+            continue
         #row_ref holds the first row in a new df containing only rows where the merchant_id matches merch_id
         row_ref = df[df["merchant_id"] == merch_id].iloc[0]
 
