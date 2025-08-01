@@ -3,8 +3,8 @@ import pandas as pd
 from pathlib import Path
 
 #define constant paths for input and output
-RAW_DIR = Path("../data/raw")
-OUT_PATH = Path("../data/processed/sparkov_pos_sorted.csv")
+RAW_DIR = Path("data/raw/sparkov")
+OUT_PATH = Path("data/processed/sparkov_pos_sorted.csv")
 
 #constant for the columns we want to keep
 COLUMNS = ["trans_date_trans_time", "cc_num", "merchant",
