@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+from pathlib import Path
 
 #function to add a spike of card transactions at a random time window for one merchant
 def add_merchant_spike(df, row, cards, window):
@@ -14,8 +15,8 @@ def add_merchant_spike(df, row, cards, window):
 
     #for loop to loop through each card
     for _ in range(cards):
-        #create a new random card number with prefix SYN to show that the card is synthetic
-        new_card_id = f"SYN{rng.integers(10**10, 10**11)}"
+        #create a new random card number with prefix MSPIKE to show that the card is synthetic
+        new_card_id = f"MSPIKE{rng.integers(10**10, 10**11)}"
 
         #offset the time by a random amount
         offset = int(rng.integers(0, window))
@@ -75,3 +76,66 @@ def add_card_burst(df,card_id, start_time, merchant_list, tx_per_merch, spacing)
 
     #return the dataframe with synthetic transactions added
     return pd.concat([df, pd.DataFrame(rows)], ignore_index=True)
+
+
+if __name__ == "__main__":
+    #define constants for filepaths
+    PATH = Path("data/processed")
+    INPUT = PATH / "sparkov_pos_sorted.csv"
+    OUTPUT = PATH / "sparkov_spikes.csv"
+    TRUTH_MERCH = PATH / "synth_truth_merchant.csv"
+    TRUTH_CARD = PATH / "synth_truth_card.csv"
+
+    #set seed for random number generator to make spikes reproducable
+    rng = np.random.default_rng(13)
+
+    #read sorted data to dataframe and print rows before injection, parses the timestamps to pandas
+    df = pd.read_csv(INPUT, parse_dates=["timestamp"])
+    print("Rows befroe injection: ", len(df))
+
+    #empty lsit to store ground truth windows
+    merch_windows = []
+
+    #smaple 50 random merchants (seeded randomness)
+    samples = df.sample(50, random_state=17)
+    #for each tuple in list of samples
+    for tpl in samples.itertuples():
+        #call the function to add a spike of 15 cards into 30s window
+        df = add_merchant_spike(df, tpl, 15, 30)
+        #find 30s bucket that spike will be injected into
+        bucket = tpl.timestamp.floor("30s")
+        #record the spikes location to measure recall later
+        merch_windows.append({"merchant_id": tpl.merchant_id, "bucket_30s": bucket})
+
+    #empty list to store ground truths for card bursts
+    card_windows =[]
+
+    #create array of all unique mechants
+    merchant_pool = df["merchant_id"].unique()
+    #loop for 50 different card bursts
+    for i in range(50):
+        #create new synthetic card number with prefix CBURST
+        base_card  = f"CBURST{rng.integers(10**10, 10**11)}"
+        #choose 4 random distinct merchants
+        merch_list     = rng.choice(merchant_pool, size=4, replace=False)
+        #choose random start time sometime in the two years the original data spans
+        start_ts   = pd.Timestamp("2019-01-01") + pd.Timedelta(
+            seconds=int(rng.integers(0, 60*60*24*730)))
+        #inject the card burst
+        #the card taps two times at each of the 4 merchants with 30s gap between taps
+        df = add_card_burst(df, base_card, start_ts, merch_list, 2, 30)
+        #save the ground truth info
+        card_windows.append({"card_id": base_card, "burst_start": start_ts})
+    
+    #resort the data by timestamp and write the new spiked data to a csv file
+    df.sort_values(["timestamp", "merchant_id"], inplace=True)
+    df.to_csv(OUTPUT, index=False)
+    #save the two ground truth files to csv
+    pd.DataFrame(merch_windows).to_csv(TRUTH_MERCH, index=False)
+    pd.DataFrame(card_windows).to_csv(TRUTH_CARD, index=False)
+
+    #print various checks to make sure the script worked
+    print("Rows after injection: ", len(df))
+    print("merchant bursts saved to", TRUTH_MERCH.name)
+    print("card bursts saved to   ", TRUTH_CARD.name)
+    print("augmented file saved to", OUTPUT.name)
