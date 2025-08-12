@@ -3,8 +3,10 @@ import pandas as pd
 from pathlib import Path
 
 #define constant paths for input and output
-RAW_DIR = Path("data/raw/sparkov")
-OUT_PATH = Path("data/processed/sparkov_pos_sorted.csv")
+BASE_DIR = Path(__file__).resolve().parents[1]
+RAW_DIR = BASE_DIR/"data"/"raw"/"sparkov"
+PRO_DIR = BASE_DIR/"data"/"processed"
+OUT_PATH = PRO_DIR/"sparkov_pos_sorted.csv"
 
 #constant for the columns we want to keep
 COLUMNS = ["trans_date_trans_time", "cc_num", "merchant",
@@ -33,18 +35,29 @@ def clean(df):
         "state": "merchant_state",
     }, inplace=True)
 
+    #cast ids to strings for easier logic later
+    df["merchant_id"] = df["merchant_id"].astype(str)
+    df["card_id"]     = df["card_id"].astype(str)
+
+    # sort by time (and merchant to be deterministic within ties)
+    df.sort_values(["timestamp", "merchant_id"], inplace=True)
+
     #return the new, cleaned dataframe
     return df[["timestamp", "card_id", "merchant_id", "amount", "category",
                 "merchant_city", "merchant_state", "zip", "is_fraud"]]
 
+def process_sparkov(out_path = OUT_PATH):
+    #function calls to load, concat, and clean the sparkov data
+    df_raw = load_concat_data(RAW_DIR/"fraudTrain.csv", RAW_DIR/"fraudTest.csv")
+    df_pos = clean(df_raw)
+    if out_path is not None: 
+        #ensure the output folder exists
+        PRO_DIR.mkdir(parents=True, exist_ok=True)
+        #write the data to disk memory, removing the pandas indexing
+        df_pos.to_csv(out_path, index=False)
+    return df_pos
 
 if __name__ == "__main__":
-    #function calls to load, concat, and clean the sparkov data
-    df_raw = load_concat_data(RAW_DIR/"fraudTrain.csv",
-                         RAW_DIR/"fraudTest.csv")
-    df_pos = clean(df_raw)
-
-    #write the data to disk memory, removing the pandas indexing
-    df_pos.to_csv(OUT_PATH, index=False)
+    df = process_sparkov(OUT_PATH)
     #print a statement to confirm it worked
-    print(f"wrote {len(df_pos):,} POS rows to {OUT_PATH}")
+    print(f"wrote {len(df):,} POS rows to {OUT_PATH}")
