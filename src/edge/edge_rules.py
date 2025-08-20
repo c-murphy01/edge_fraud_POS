@@ -66,7 +66,8 @@ class EdgeRules:
             self.card.update(card_id, ts, merch_id)
             self.cap.update(amt)
             self.ewma.update(card_id, amt)
-            self.travel.update(card_id, ts, zip_code=None, lat=None, lon=None)
+            #get zip code from record
+            self.travel.update(card_id, ts, zip_code=r.get("zip"), lat=None, lon=None)
     
     #function to evaluate a transaction against the edge rules
     def evaluate(self, tx):

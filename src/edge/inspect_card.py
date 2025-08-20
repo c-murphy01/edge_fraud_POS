@@ -38,7 +38,7 @@ def main():
     for r in recent:
         #format and print each transaction record
         print(f"  {format_ts(r['timestamp'])}  amount_cents={r['amount_cents']}  "
-              f"merchant={r['merchant_id']}  flags={r['flags']}")
+              f"merchant={r['merchant_id']}  zip_code={r['zip']}  flags={r['flags']}")
 
 if __name__ == "__main__":
     main()
