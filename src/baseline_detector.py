@@ -8,7 +8,10 @@ class MerchantWindow:
     def __init__(self, window_s=30, keep_windows=10):
         self.window = window_s
         self.keep_windows = keep_windows
-        self.counts = defaultdict(set)
+        #for each mercahnt create a nested dictionary
+        #outer dict -> key:merchant_id, value:inner dict
+        #inner dict -> key:bucket timestamp, value:set of card_ids
+        self.counts = defaultdict(lambda: defaultdict(set))
 
     #main method called for each tx
     #takes args merchant_id, timestamp, and card_id
@@ -16,17 +19,17 @@ class MerchantWindow:
     def update(self, merchant_id, ts, card_id):
         #converts timestamp into bucket start time (pd.to_datetime ensure ts is a timestamp (not a string, etc.)
         bucket = pd.to_datetime(ts).floor(f"{self.window}s")
-        #adds this card to the set for this merchant and bucket (cannot ahve duolicates so only new cards are added)
-        key = (merchant_id, bucket)
-        self.counts[key].add(card_id)
+        #adds this card to the set for this merchant and bucket (cannot have duplicates so only new cards are added)
+        buckets = self.counts[merchant_id]
+        buckets[bucket].add(card_id)
         #add small garbage collector to drop buckets after N windows
         cutoff = bucket - pd.Timedelta(seconds=self.window * self.keep_windows)
         #create list of keys for this merchant with bucket timestamps older than cutoff
-        old_keys = [k for k in self.counts.keys() if k[0] == merchant_id and k[1] < cutoff]
-        for k in old_keys:
-            del self.counts[k]
+        old = [b for b in list(buckets.keys()) if b < cutoff]
+        for b in old:
+            del buckets[b]
         #return number of unique card_ids in thsi merchant/bucket set
-        return len(self.counts[key])
+        return len(buckets[bucket])
 
 #counter for how many unique merchants one card sees in a 30s window
 class CardWindow:
