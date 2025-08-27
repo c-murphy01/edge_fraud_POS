@@ -23,11 +23,11 @@ class EdgeRules:
         self, 
         merchant_threshold=6,
         card_threshold=3,
-        amount_cap=1500,
+        amount_cap=1750,
         ewma_alpha=0.2,
-        ewma_k=5.25,
+        ewma_k=5,
         ewma_initial=10,
-        ewma_min_gate=850,
+        ewma_min_gate=100,
         zip_csv_path=None,
         travel_vmax_kmh=600.0,
         travel_min_km=150.0,
@@ -66,7 +66,8 @@ class EdgeRules:
             self.card.update(card_id, ts, merch_id)
             self.cap.update(amt)
             self.ewma.update(card_id, amt)
-            self.travel.update(card_id, ts, zip_code=None, lat=None, lon=None)
+            #get zip code from record
+            self.travel.update(card_id, ts, zip_code=r.get("zip"), lat=None, lon=None)
     
     #function to evaluate a transaction against the edge rules
     def evaluate(self, tx):

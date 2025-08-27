@@ -161,7 +161,7 @@ def unpack_header(b):
     }
 
 #function to pack a transaction into a byte array
-def pack_tx(timestamp, amount_cents, merchant_id, flags):
+def pack_tx(timestamp, amount_cents, merchant_id, flags, zip_code=None):
     #create a bytearray of 16 bytes and fill it with transaction data
     b = bytearray(16)
     #set timestamp (big endian 32-bit unsigned integer)
@@ -170,9 +170,16 @@ def pack_tx(timestamp, amount_cents, merchant_id, flags):
     b[4:8] = struct.pack(">i", amount_cents)
     #set merchant ID (big endian 16-bit unsigned integer)
     b[8:10] = struct.pack(">H", merchant_id & 0xFFFF)
-    #set unused bytes to zero
-    b[10] = 0
-    b[11] = 0
+    #set zip code (big endian 16-bit unsigned integer, 0 if no zip code)
+    #initalise zip_int to 0
+    zip_int = 0
+    if zip_code:
+        #convert zip code to string, keeping only 5 digits
+        z = "".join(ch for ch in str(zip_code) if ch.isdigit())[:5]
+        if z:
+            #convert to integer, ensuring it's within max unsigned int range 
+            zip_int = max(0, min(65535, int(z)))
+    b[10:12] = struct.pack(">H", zip_int)
     #set flags (1 byte)
     b[12] = flags & 0xFF
     #set unused bytes to zero
@@ -190,11 +197,18 @@ def unpack_tx(b):
     #check if the checksum is valid
     if sum16(b[0:14]) != struct.unpack(">H", b[14:16])[0]:
         return None
-    #if both checks succeed, return a dictionary with the unpacked transaction data
+    #if both checks succeed, continue
+    #unpack zip code
+    zip_int = struct.unpack(">H", b[10:12])[0]
+    #fill with 0s until it is 5 digits long if needs be
+    #set string to None if zip_int is 0
+    zip_str = str(zip_int).zfill(5) if zip_int > 0 else None
+    #return a dictionary with the unpacked transaction data
     return {
         "timestamp": struct.unpack(">I", b[0:4])[0],
         "amount_cents": struct.unpack(">i", b[4:8])[0],
         "merchant_id": struct.unpack(">H", b[8:10])[0],
+        "zip": zip_str,
         "flags": b[12]
     }
 
