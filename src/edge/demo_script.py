@@ -1,5 +1,5 @@
 #import libraries and functions
-import csv, time, os, datetime, argparse
+import csv, time, os, datetime, random
 from edge.edge_rules import EdgeRules
 from edge.edge_card  import wait_for_card, read_recent_tx, pack_tx, write_recent_tx
 
@@ -36,11 +36,14 @@ def wait_for_window():
     #find remaining seconds until next 30s window
     remaining = 31 - (int(now) % 30)
     #print message and sleep until next window
-    print(f"[demo] waiting {remaining}s to clear 30s window…")
+    print(f"\n[demo] waiting {remaining}s to clear 30s window…")
     time.sleep(remaining)
 
 #function to evaluater
-def eval_and_write(uid, rules, amount_cents, merchant_id, zipc=None, lat=None, lon=None, note=""):
+def eval_and_write(uid, rules, merchant_id, amount_cents=None, zipc=None, lat=None, lon=None, note=""):
+    #generate random transaction value from €1 - €40
+    if amount_cents is None:
+        amount_cents = random.randint(100, 4000)
     #warmup already done by caller
     tx = {
         "timestamp": int(time.time()),
@@ -52,6 +55,10 @@ def eval_and_write(uid, rules, amount_cents, merchant_id, zipc=None, lat=None, l
     }
     #evaluate transaction
     flag, reasons = rules.evaluate(tx)
+    ts_readable = datetime.datetime.fromtimestamp(tx["timestamp"]).strftime("%H:%M:%S")
+    #print tx details
+    print(f"TX details[ time: {ts_readable}; merchant ID: {merchant_id}; "
+        f"Card ID: {uid.hex()}; amount: €{tx['amount']:.2f}; location: {zipc} ]")
     #print the eval results
     print(f"{note} EDGE CHECK:", "FLAGGED" if flag else "OK", reasons)
     #pack the transaction details
@@ -64,29 +71,31 @@ def eval_and_write(uid, rules, amount_cents, merchant_id, zipc=None, lat=None, l
     log_row(tx, flag, reasons)
     return flag, reasons
 
-#function to run this demo script
-def run():
-    #tell user to tap card and leave it so the ID can be scannefd and the recent transactions can be read
-    print("Place one card on the antenna and keep it there.")
+def demo_walkthrough():
+    #function to instantiate a new rules object
+    def new_ruleset(uid=None):
+        r = EdgeRules(zip_csv_path="data/raw/zip_lat_long.csv")
+        if uid:
+            #get metadata and recent Tx
+            meta, recent = read_recent_tx(uid, max_count=30)
+            #initialise rules from recent tx
+            r.warmup_from_card(uid.hex(), list(reversed(recent)))
+            #return warmed up ruleset
+        return r
+
+    #demonstrate the edge rules in action
+    #Test 1: card baseline (>= 3 different merchants in 30s with one card)
+    print("\n1. Card Threshold Test.")
+    print("Three transactions at different merchants.\n")
+    print("Please tap and hold a card on the reader!")
+    time.sleep(3)
     uid = wait_for_card(timeout=60)
-    if not uid:
-        print("No card detected."); return
-    #show that the ID was read properly
-    print("UID:", uid.hex())
-
-    #instantiate a rules object
-    rules = EdgeRules(zip_csv_path="data/raw/zip_lat_long.csv")
-
-    #warmup rules from card
-    meta, recent = read_recent_tx(uid, max_count=30)
-    rules.warmup_from_card(uid.hex(), list(reversed(recent)))
-
-    #Test 1: card baseline 
+    rules = new_ruleset(uid)
     #create transactions with 3 different merchants in 30s
-    eval_and_write(uid, rules, 199, merchant_id=1001, note="[CardBaseline 1/3]")
-    eval_and_write(uid, rules, 199, merchant_id=1002, note="[CardBaseline 2/3]")
-    eval_and_write(uid, rules, 199, merchant_id=1003, note="[CardBaseline 3/3]")
-
+    eval_and_write(uid, rules, merchant_id=1001, note="\n[CardBaseline 1]")
+    eval_and_write(uid, rules, merchant_id=1002, note="\n[CardBaseline 2]")
+    eval_and_write(uid, rules, merchant_id=1003, note="\n[CardBaseline 3]")
+    
     #wait for the next 30w window so flags dont carry over
     wait_for_window()
 
@@ -95,66 +104,98 @@ def run():
     #adjust merchant threshold to 3 just for this test (easier to demo)
     rules.merchant.th = 3
 
+    print("\n2. Merchant Threshold Test.")
+    print("One transaction with three different cards at the same merchant.")
+    print("Note: The normal threshold of 6 is changed to 3 for demonstration puposes.\n")
     #transaction for card A
-    print("Tap CARD A")
+    print("Tap CARD A!")
+    time.sleep(3)
     uidA = wait_for_card(timeout=60)
-    eval_and_write(uidA, rules, 199, merchant_id=9001, note="[Merchant A]")
-    print("Card ID: ", uidA.hex())
+    eval_and_write(uidA, rules, merchant_id=2001, note="\n[Merchant A]")
+    print("Card ID: ", uidA.hex(), "\n")
     #sleep for a couple of seconds so user can change card
     time.sleep(2)
 
     #transaction for card B
-    print("Now tap CARD B")
+    print("Now tap CARD B!")
+    time.sleep(3)
     uidB = wait_for_card(timeout=60)
-    eval_and_write(uidB, rules, 199, merchant_id=9001, note="[Merchant B]")
-    print("Card ID: ", uidB.hex())
+    eval_and_write(uidB, rules, merchant_id=2001, note="[Merchant B]")
+    print("Card ID: ", uidB.hex(), "\n")
     time.sleep(2)
 
     #transaction for card C
-    print("Finally tap CARD C")
+    print("Finally tap CARD C!")
+    time.sleep(3)
     uidC = wait_for_card(timeout=60)
-    eval_and_write(uidC, rules, 199, merchant_id=9001, note="[Merchant C]")
+    eval_and_write(uidC, rules, merchant_id=2001, note="[Merchant C]")
     print("Card ID: ", uidC.hex())
     time.sleep(5)
 
     #wait for new window again
     wait_for_window()
 
-    #reinstantiate and warm up rules object
-    rules = EdgeRules(zip_csv_path="data/raw/zip_lat_long.csv")
-    meta, recent = read_recent_tx(uid, max_count=30)
-    rules.warmup_from_card(uid.hex(), list(reversed(recent)))
+    #Test 3: card EWMA: 6 Tx, small, 'normal' values for first 5, then unusually large value for Tx 6
+    print("\n3. Card EWMA Test.")
+    print("Six transactions created: First 5 are 'normal' transaction values, 6th is 'unusaully large for this card.")
+    print("Note: The normal initial 'warm up' transactions required of 10 is changed to 5 for demonstration puposes.\n")
 
-    #Test 3: card EWMA
+    print("Please tap and hold a card on the reader!")
+    time.sleep(3)
+    uid = wait_for_card(timeout=60)
+    #reinstantiate and warm up rule objects to avoid extra flags in demo 
+    rules = new_ruleset(uid)
     #change initial tx needed for warm up to 5 for demo
     rules.ewma.initial = 5
     #create 5 transactions with 'normal amounts' for thsi card so thast there is a baseline for EWMA
-    eval_and_write(uid, rules, 500, merchant_id=1200, note="[EWMA baseline]")
-    eval_and_write(uid, rules, 400, merchant_id=1200, note="[EWMA baseline]")
-    eval_and_write(uid, rules, 300, merchant_id=1200, note="[EWMA baseline]")
-    eval_and_write(uid, rules, 400, merchant_id=1200, note="[EWMA baseline]")
-    eval_and_write(uid, rules, 500, merchant_id=1200, note="[EWMA baseline]")
+    eval_and_write(uid, rules, merchant_id=3001, note="\n[EWMA baseline 1]")
+    eval_and_write(uid, rules, merchant_id=3002, note="\n[EWMA baseline 2]")
+    eval_and_write(uid, rules, merchant_id=3001, note="\n[EWMA baseline 3]")
+    eval_and_write(uid, rules, merchant_id=3002, note="\n[EWMA baseline 4]")
+    eval_and_write(uid, rules, merchant_id=3001, note="\n[EWMA baseline 5]")
     #create a much larger than usual transaction to test EWMA logic
-    eval_and_write(uid, rules, 174000, merchant_id=1200, note="[EWMA spike]")
+    eval_and_write(uid, rules, amount_cents=174000, merchant_id=3002, note="\n[EWMA spike]")
     
     wait_for_window()
 
     #Test 4: amount cap
     #try to make a high value transaction that is over the set amount cap
-    eval_and_write(uid, rules, 250000, merchant_id=1100, note="[AmountCap]")
+    print("\n4. Amount Cap Test.")
+    print("High value transaction (€2,500) that should be above the set amount cap.\n")
+    print("Please tap a card!")
+    time.sleep(3)
+    uid = wait_for_card(timeout=60)
+    #reinstantiate and warm up rule objects to avoid extra flags in demo 
+    rules = new_ruleset(uid)
+
+    eval_and_write(uid, rules, amount_cents=250000, merchant_id=4001, note="\n[AmountCap]")
 
     wait_for_window()
 
     #Test 5: impossible travel
+    #try two transactions at different zip codes to simulate impossible travel
+    print("\n5. Impossible Travel Test.")
+    print("Two transactions, one in Times Square, New York, the next in Santa Monica, Los Angeles")
+    print("Note: The normal minimum time delta of 60 seconds is changed to 3 seconds for demonstration puposes.")
+    
+    #create two transactions with the same card from different locations (zip codes) to check impossible travel logic
+    print("Please tap a card!")
+    time.sleep(3)
+    uid = wait_for_card(timeout=60)
+    
+    #reinstantiate and warm up rule objects to avoid extra flags in demo 
+    rules = new_ruleset(uid)
     #reduce minimum time delta for demo to eliminate wait for second transaction
     rules.travel.min_dt_s = 3
-    #create two transactions with the same card from different locations (zip codes) to check impossible travel logic
-    eval_and_write(uid, rules, 199, merchant_id=1300, zipc=10001, note="[Travel A]")
+    eval_and_write(uid, rules, merchant_id=5001, zipc=10036, note="\n[Travel A]")
     time.sleep(4)  # under 3s
-    eval_and_write(uid, rules, 199, merchant_id=1300, zipc=90001, note="[Travel B]")
+    print("\nPlease tap the same card again!")
+    time.sleep(3)
+    uid = wait_for_card(timeout=60)
+    eval_and_write(uid, rules, merchant_id=5002, zipc=90405, note="\n[Travel B]")
 
     #print confirmation that script is finished
-    print("\nDone. Recent rows in data/runs/pos_log.csv will show flags & reasons.")
+    print("\nDone.")
 
 if __name__ == "__main__":
-    run()
+    demo_walkthrough()
