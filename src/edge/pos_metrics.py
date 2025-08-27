@@ -124,7 +124,7 @@ if __name__ == "__main__":
     #create a parser 
     p = argparse.ArgumentParser(prog="metrics")
     #add subcommands
-    sub = p.add_subparsers(required=True, dest="")
+    sub = p.add_subparsers(required=True)
 
     #register latency function as subcommand and add iteration argument
     s_lat = sub.add_parser("latency")
