@@ -77,7 +77,7 @@ def demo_walkthrough():
         r = EdgeRules(zip_csv_path="data/raw/zip_lat_long.csv")
         if uid:
             #get metadata and recent Tx
-            meta, recent = read_recent_tx(uid, max_count=30)
+            meta, recent = read_recent_tx(uid, max_count=10)
             #initialise rules from recent tx
             r.warmup_from_card(uid.hex(), list(reversed(recent)))
             #return warmed up ruleset

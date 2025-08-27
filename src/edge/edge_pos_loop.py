@@ -28,8 +28,8 @@ def process_transaction(args):
         return
     #set card ID from the UID
     card_id = uid.hex()
-    #read recent transactions from the card up to 30 txs
-    meta, recent = read_recent_tx(uid, max_count=30)
+    #read recent transactions from the card up to 10 txs
+    meta, recent = read_recent_tx(uid, max_count=10)
 
     #warmup the rules using on-card history
     rules.warmup_from_card(card_id, list(reversed(recent)))

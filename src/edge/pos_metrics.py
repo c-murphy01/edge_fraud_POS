@@ -115,7 +115,7 @@ def resource(args):
     #print result
     print(f"CPU time per update: {t_per_update:.2f} micro_s (mean over {iters} iters)")
 
-    #calculate the Resisdent State Size (portion of RAM occubied by the evaluation process)
+    #calculate the Resisdent State Size (portion of RAM occubied by the evaluation process) (convert to MiB)
     rss_mb = psutil.Process(os.getpid()).memory_info().rss / (1024*1024)
     #print result
     print(f"Process RSS: {rss_mb:.2f} MiB")

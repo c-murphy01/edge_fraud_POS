@@ -22,9 +22,26 @@ pn = PN532_SPI(spi, CS_PIN, reset=RESET_PIN, debug=False)
 #enable MiFARE communication
 pn.SAM_configuration()
 
-#set default keys for MiFARE Classic authentication
+#section to report memory usage of the POS loop
+#try and except to avoid breaking loop
+try:
+    #import libs (_t to avoid clashes with variables)
+    import os, psutil, gc, time as _t
+    #build process for this process
+    p = psutil.Process(os.getpid())
+    #free unreachable objects
+    gc.collect()
+    #small sleep to wait out any jitter
+    _t.sleep(0.05)
+    #calculate RSS (convert to MiB)
+    rss_mb = p.memory_info().rss / (1024*1024)
+    #print results
+    print(f"[resource] POS startup RSS: {rss_mb:.2f} MiB")
+except Exception:
+    pass
+
+#set default key for MiFARE Classic authentication
 KEY_A = bytes([0xFF]*6)
-KEY_B = bytes([0xFF]*6)
 
 #block map 
 #keep block 4 for header
@@ -46,12 +63,8 @@ def sum16(b):
 #function to try to authenticate a block with Key A, then Key B
 #returns True if authentication succeeds with either key
 def auth_any(uid, block):
-    #AUTH_A = 0x60, AUTH_B = 0x61 (defined by PN532)
-    if pn.mifare_classic_authenticate_block(uid, block, 0x60, KEY_A):
-        return True
-    if pn.mifare_classic_authenticate_block(uid, block, 0x61, KEY_B):
-        return True
-    return False
+    #AUTH_A = 0x60 (defined by PN532)
+    return pn.mifare_classic_authenticate_block(uid, block, 0x60, KEY_A)
 
 #function to return card's UID or timeout after a set time
 def wait_for_card(timeout=None, stable_read=3):
@@ -257,7 +270,7 @@ def load_init_header(uid):
     
 #function to read recent transactions from the card
 #returns the metadata and a list of transactions (newest first)
-def read_recent_tx(uid, max_count=25):
+def read_recent_tx(uid, max_count=10):
     #load or create the header
     metadata = load_init_header(uid)
     #if header is None, return None and an empty list
@@ -307,9 +320,14 @@ def write_recent_tx(uid, tx):
     #set the last timestamp to current time
     metadata["last_timestamp"] = int(time.time())
 
-    #try to write the updated metadata back to the header block
-    if not write_header(uid, metadata):
-        return False, "header write failed"
+    #only update header every 3 transactions to speed up process
+    UPDATE_HEADER_EVERY = 3
+    if (metadata["total_count"] % UPDATE_HEADER_EVERY) == 0:
+        #try to write the updated metadata back to the header block
+        if not write_header(uid, metadata):
+            return False, "header write failed"
+    else:
+        pass
 
     #if everything succeeds, return True and a success message
     return True, "write successful"
